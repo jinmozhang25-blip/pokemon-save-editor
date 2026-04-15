@@ -1,0 +1,182 @@
+import struct
+
+# ============================================================
+# USER CONFIGURATION – Change this to your save file location
+SAVE_FILE_PATH = r"examples/sample.sav"
+# ============================================================
+
+# ---------- Gen I English Character Mapping (partial) ----------
+CHAR_MAP = {
+    0x50: '',        # terminator
+    0x7F: ' ',
+    0x80: 'A', 0x81: 'B', 0x82: 'C', 0x83: 'D', 0x84: 'E',
+    0x85: 'F', 0x86: 'G', 0x87: 'H', 0x88: 'I', 0x89: 'J',
+    0x8A: 'K', 0x8B: 'L', 0x8C: 'M', 0x8D: 'N', 0x8E: 'O',
+    0x8F: 'P', 0x90: 'Q', 0x91: 'R', 0x92: 'S', 0x93: 'T',
+    0x94: 'U', 0x95: 'V', 0x96: 'W', 0x97: 'X', 0x98: 'Y',
+    0x99: 'Z',
+    0xA0: 'a', 0xA1: 'b', 0xA2: 'c', 0xA3: 'd', 0xA4: 'e',
+    0xA5: 'f', 0xA6: 'g', 0xA7: 'h', 0xA8: 'i', 0xA9: 'j',
+    0xAA: 'k', 0xAB: 'l', 0xAC: 'm', 0xAD: 'n', 0xAE: 'o',
+    0xAF: 'p', 0xB0: 'q', 0xB1: 'r', 0xB2: 's', 0xB3: 't',
+    0xB4: 'u', 0xB5: 'v', 0xB6: 'w', 0xB7: 'x', 0xB8: 'y',
+    0xB9: 'z',
+    0xF6: '0', 0xF7: '1', 0xF8: '2', 0xF9: '3',
+    0xFA: '4', 0xFB: '5', 0xFC: '6', 0xFD: '7',
+    0xFE: '8', 0xFF: '9',
+}
+
+# ---------- Species ID to Name (Gen I) ----------
+SPECIES_NAMES = {
+    0x01: "Rhydon", 0x02: "Kangaskhan", 0x03: "Nidoran♂", 0x04: "Clefairy",
+    0x05: "Spearow", 0x06: "Voltorb", 0x07: "Nidoking", 0x08: "Slowbro",
+    0x09: "Ivysaur", 0x0A: "Exeggutor", 0x0B: "Lickitung", 0x0C: "Exeggcute",
+    0x0D: "Grimer", 0x0E: "Gengar", 0x0F: "Nidoran♀", 0x10: "Nidoqueen",
+    0x11: "Cubone", 0x12: "Rhyhorn", 0x13: "Lapras", 0x14: "Arcanine",
+    0x15: "Mew", 0x16: "Gyarados", 0x17: "Shellder", 0x18: "Tentacool",
+    0x19: "Gastly", 0x1A: "Scyther", 0x1B: "Staryu", 0x1C: "Blastoise",
+    0x1D: "Pinsir", 0x1E: "Tangela", 0x1F: "MissingNo.", 0x20: "MissingNo.",
+    0x21: "Growlithe", 0x22: "Onix", 0x23: "Fearow", 0x24: "Pidgey",
+    0x25: "Slowpoke", 0x26: "Kadabra", 0x27: "Graveler", 0x28: "Chansey",
+    0x29: "Machoke", 0x2A: "Mr. Mime", 0x2B: "Hitmonlee", 0x2C: "Hitmonchan",
+    0x2D: "Arbok", 0x2E: "Parasect", 0x2F: "Psyduck", 0x30: "Drowzee",
+    0x31: "Golem", 0x32: "MissingNo.", 0x33: "Magmar", 0x34: "MissingNo.",
+    0x35: "Electabuzz", 0x36: "Magneton", 0x37: "Koffing", 0x38: "MissingNo.",
+    0x39: "Mankey", 0x3A: "Seel", 0x3B: "Diglett", 0x3C: "Tauros",
+    0x3D: "MissingNo.", 0x3E: "MissingNo.", 0x3F: "MissingNo.", 0x40: "Farfetch'd",
+    0x41: "Venonat", 0x42: "Dragonite", 0x43: "MissingNo.", 0x44: "MissingNo.",
+    0x45: "MissingNo.", 0x46: "Doduo", 0x47: "Poliwag", 0x48: "Jynx",
+    0x49: "Moltres", 0x4A: "Articuno", 0x4B: "Zapdos", 0x4C: "Ditto",
+    0x4D: "Meowth", 0x4E: "Krabby", 0x4F: "MissingNo.", 0x50: "MissingNo.",
+    0x51: "MissingNo.", 0x52: "Vulpix", 0x53: "Ninetales", 0x54: "Pikachu",
+    0x55: "Raichu", 0x56: "MissingNo.", 0x57: "MissingNo.", 0x58: "Dratini",
+    0x59: "Dragonair", 0x5A: "Kabuto", 0x5B: "Kabutops", 0x5C: "Horsea",
+    0x5D: "Seadra", 0x5E: "MissingNo.", 0x5F: "MissingNo.", 0x60: "Sandshrew",
+    0x61: "Sandslash", 0x62: "Omanyte", 0x63: "Omastar", 0x64: "Jigglypuff",
+    0x65: "Wigglytuff", 0x66: "Eevee", 0x67: "Flareon", 0x68: "Jolteon",
+    0x69: "Vaporeon", 0x6A: "Machop", 0x6B: "Zubat", 0x6C: "Ekans",
+    0x6D: "Paras", 0x6E: "Poliwhirl", 0x6F: "Poliwrath", 0x70: "Weedle",
+    0x71: "Kakuna", 0x72: "Beedrill", 0x73: "MissingNo.", 0x74: "Dodrio",
+    0x75: "Primeape", 0x76: "Dugtrio", 0x77: "Venomoth", 0x78: "Dewgong",
+    0x79: "MissingNo.", 0x7A: "MissingNo.", 0x7B: "Caterpie", 0x7C: "Metapod",
+    0x7D: "Butterfree", 0x7E: "Machamp", 0x7F: "MissingNo.", 0x80: "Golduck",
+    0x81: "Hypno", 0x82: "Golbat", 0x83: "Mewtwo", 0x84: "Snorlax",
+    0x85: "Magikarp", 0x86: "MissingNo.", 0x87: "MissingNo.", 0x88: "Muk",
+    0x89: "MissingNo.", 0x8A: "Kingler", 0x8B: "Cloyster", 0x8C: "MissingNo.",
+    0x8D: "Electrode", 0x8E: "Clefable", 0x8F: "Weezing", 0x90: "Persian",
+    0x91: "Marowak", 0x92: "MissingNo.", 0x93: "Haunter", 0x94: "Abra",
+    0x95: "Alakazam", 0x96: "Pidgeotto", 0x97: "Pidgeot", 0x98: "Starmie",
+    0x99: "Bulbasaur", 0x9A: "Venusaur", 0x9B: "Tentacruel", 0x9C: "MissingNo.",
+    0x9D: "Goldeen", 0x9E: "Seaking", 0x9F: "MissingNo.", 0xA0: "MissingNo.",
+    0xA1: "MissingNo.", 0xA2: "MissingNo.", 0xA3: "Ponyta", 0xA4: "Rapidash",
+    0xA5: "Rattata", 0xA6: "Raticate", 0xA7: "Nidorino", 0xA8: "Nidorina",
+    0xA9: "Geodude", 0xAA: "Porygon", 0xAB: "Aerodactyl", 0xAC: "MissingNo.",
+    0xAD: "Magnemite", 0xAE: "MissingNo.", 0xAF: "MissingNo.", 0xB0: "Charmander",
+    0xB1: "Squirtle", 0xB2: "Charmeleon", 0xB3: "Wartortle", 0xB4: "Charizard",
+    0xB5: "MissingNo.", 0xB6: "MissingNo.", 0xB7: "MissingNo.", 0xB8: "MissingNo.",
+    0xB9: "Oddish", 0xBA: "Gloom", 0xBB: "Vileplume", 0xBC: "Bellsprout",
+    0xBD: "Weepinbell", 0xBE: "Victreebel",
+}
+
+def decode_text(data):
+    """Decode Gen I text bytes until terminator 0x50."""
+    result = []
+    for b in data:
+        if b == 0x50:
+            break
+        result.append(CHAR_MAP.get(b, '?'))
+    return ''.join(result)
+
+def bcd_to_int(bcd_bytes):
+    """Convert 3‑byte BCD (big‑endian) to integer."""
+    value = 0
+    for byte in bcd_bytes:
+        value = value * 100 + ((byte >> 4) * 10 + (byte & 0x0F))
+    return value
+
+def get_badges(badge_byte):
+    """Return list of badge names obtained."""
+    badge_names = [
+        "Boulder", "Cascade", "Thunder", "Rainbow",
+        "Soul", "Marsh", "Volcano", "Earth"
+    ]
+    return [name for i, name in enumerate(badge_names) if (badge_byte >> i) & 1]
+
+def parse_save(filename):
+    with open(filename, 'rb') as f:
+        data = f.read()
+
+    # Bank 1
+    bank1 = data[0x2000:0x4000]
+
+    # Player name
+    player_name = decode_text(bank1[0x2598 - 0x2000 : 0x25A3 - 0x2000])
+
+    # Rival name
+    rival_name = decode_text(bank1[0x25F6 - 0x2000 : 0x2601 - 0x2000])
+
+    # Money
+    money_bytes = bank1[0x25F3 - 0x2000 : 0x25F6 - 0x2000]
+    money = bcd_to_int(money_bytes)
+
+    # Badges
+    badge_byte = bank1[0x2602 - 0x2000]
+    badges = get_badges(badge_byte)
+
+    # Party
+    party_count = bank1[0x2F2C - 0x2000]
+    party_species = list(bank1[0x2F2D - 0x2000 : 0x2F33 - 0x2000])
+    party_start = 0x2F34 - 0x2000  # first Pokémon 44‑byte struct
+
+    party_pokemon = []
+    for i in range(party_count):
+        offset = party_start + i * 44
+        species_id = bank1[offset]   # species
+        level = bank1[offset + 0x21]   # level
+        species_name = SPECIES_NAMES.get(species_id, f"Unknown ({species_id})")
+        party_pokemon.append({
+            'species_id': species_id,
+            'species_name': species_name,
+            'level': level
+        })
+
+    return {
+        'player_name': player_name,
+        'rival_name': rival_name,
+        'money': money,
+        'badges': badges,
+        'party_count': party_count,
+        'party': party_pokemon
+    }
+
+def main():
+    import sys
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+    else:
+        file_path = SAVE_FILE_PATH
+
+    if not file_path:
+        print("Error: No save file specified. Either edit SAVE_FILE_PATH or pass the file as an argument.")
+        print("Usage: python parse_save.py <savefile.sav>")
+        sys.exit(1)
+
+    try:
+        info = parse_save(file_path)
+    except FileNotFoundError:
+        print(f"Error: File not found: {file_path}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading save file: {e}")
+        sys.exit(1)
+
+    print(f"Player: {info['player_name']}")
+    print(f"Rival:  {info['rival_name']}")
+    print(f"Money:  {info['money']} ₽")
+    print(f"Badges: {', '.join(info['badges']) if info['badges'] else 'None'}")
+    print(f"Party ({info['party_count']} Pokémon):")
+    for i, p in enumerate(info['party']):
+        print(f"  {i+1}. {p['species_name']} (Level {p['level']})")
+
+if __name__ == '__main__':
+    main()

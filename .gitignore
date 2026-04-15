@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.sav
+*.DS_Store
+# IDE
+.vscode/
+.idea/
+# Any local test files
+temp/
