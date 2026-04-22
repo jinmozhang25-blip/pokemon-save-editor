@@ -78,6 +78,39 @@ SPECIES_NAMES = {
     0xBD: "Weepinbell", 0xBE: "Victreebel",
 }
 
+# ---------- Item ID to Name (Gen I) ----------
+ITEM_NAMES = {
+    0x01: "Master Ball", 0x02: "Ultra Ball", 0x03: "Great Ball", 0x04: "Poké Ball",
+    0x05: "Town Map", 0x06: "Bicycle", 0x07: "S.S. Ticket", 0x08: "Escape Rope",
+    0x09: "Repel", 0x0A: "Moon Stone", 0x0B: "Antidote", 0x0C: "Burn Heal",
+    0x0D: "Ice Heal", 0x0E: "Awakening", 0x0F: "Parlyz Heal", 0x10: "Full Restore",
+    0x11: "Max Potion", 0x12: "Hyper Potion", 0x13: "Super Potion", 0x14: "Potion",
+    0x15: "BoulderBadge", 0x16: "CascadeBadge", 0x17: "ThunderBadge", 0x18: "RainbowBadge",
+    0x19: "SoulBadge", 0x1A: "MarshBadge", 0x1B: "VolcanoBadge", 0x1C: "EarthBadge",
+    0x1D: "Old Rod", 0x1E: "Good Rod", 0x1F: "Super Rod", 0x20: "Coin",
+    0x21: "Fresh Water", 0x22: "Soda Pop", 0x23: "Lemonade", 0x24: "Rage Candy Bar",
+    0x25: "PP Up", 0x26: "Dire Hit", 0x27: "Guard Spec.", 0x28: "X Attack",
+    0x29: "X Defend", 0x2A: "X Speed", 0x2B: "X Special", 0x2C: "HP Up",
+    0x2D: "Protein", 0x2E: "Iron", 0x2F: "Carbos", 0x30: "Calcium",
+    0x31: "Nugget", 0x32: "Rare Candy", 0x33: "TM01", 0x34: "TM02",
+    0x35: "TM03", 0x36: "TM04", 0x37: "TM05", 0x38: "TM06",
+    0x39: "TM07", 0x3A: "TM08", 0x3B: "TM09", 0x3C: "TM10",
+    0x3D: "TM11", 0x3E: "TM12", 0x3F: "TM13", 0x40: "TM14",
+    0x41: "TM15", 0x42: "TM16", 0x43: "TM17", 0x44: "TM18",
+    0x45: "TM19", 0x46: "TM20", 0x47: "TM21", 0x48: "TM22",
+    0x49: "TM23", 0x4A: "TM24", 0x4B: "TM25", 0x4C: "TM26",
+    0x4D: "TM27", 0x4E: "TM28", 0x4F: "TM29", 0x50: "TM30",
+    0x51: "TM31", 0x52: "TM32", 0x53: "TM33", 0x54: "TM34",
+    0x55: "TM35", 0x56: "TM36", 0x57: "TM37", 0x58: "TM38",
+    0x59: "TM39", 0x5A: "TM40", 0x5B: "TM41", 0x5C: "TM42",
+    0x5D: "TM43", 0x5E: "TM44", 0x5F: "TM45", 0x60: "TM46",
+    0x61: "TM47", 0x62: "TM48", 0x63: "TM49", 0x64: "TM50",
+    0x65: "HM01", 0x66: "HM02", 0x67: "HM03", 0x68: "HM04",
+    0x69: "HM05", 0x6A: "Old Amber", 0x6B: "Dome Fossil", 0x6C: "Helix Fossil",
+    0x6D: "Secret Key", 0x6E: "Itemfinder", 0x6F: "Poké Flute", 0x70: "Exp. Share",
+    0x71: "Card Key", 0x72: "S.S. Ticket", 0x73: "Gold Teeth"
+}
+
 def decode_text(data):
     """Decode Gen I text bytes until terminator 0x50."""
     result = []
@@ -140,13 +173,49 @@ def parse_save(filename):
             'level': level
         })
 
+    # Bag items
+    bag_start = 0x25C0 - 0x2000
+    bag_items = []
+    for i in range(20):
+        offset = bag_start + i * 2
+        item_id = bank1[offset]
+        quantity = bank1[offset + 1]
+        if item_id == 0 or quantity == 0 or (item_id == 0xFF and quantity == 0xFF):
+            continue
+        item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
+        bag_items.append({
+            'item_id': item_id,
+            'item_name': item_name,
+            'quantity': quantity
+        })
+
+    #PC items
+    pc_start = 0x27E6 - 0x2000
+    pc_items = []
+    for i in range(50):
+        offset = pc_start + i * 2
+        quantity = bank1[offset]
+        item_id = bank1[offset + 1]
+        if item_id == 0 or quantity == 0:
+            continue
+        if item_id == 0xFF or quantity == 0xFF:
+            continue
+        item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
+        pc_items.append({
+            'item_id': item_id,
+            'item_name': item_name,
+            'quantity': quantity
+        })
+
     return {
         'player_name': player_name,
         'rival_name': rival_name,
         'money': money,
         'badges': badges,
         'party_count': party_count,
-        'party': party_pokemon
+        'party': party_pokemon,
+        'bag_items': bag_items,
+        'pc_items': pc_items
     }
 
 def main():
@@ -177,6 +246,12 @@ def main():
     print(f"Party ({info['party_count']} Pokémon):")
     for i, p in enumerate(info['party']):
         print(f"  {i+1}. {p['species_name']} (Level {p['level']})")
+    print(f"Bag items ({len(info['bag_items'])} slots):")
+    for item in info['bag_items']:
+        print(f"  {item['item_name']} x{item['quantity']}")
+    print(f"PC items ({len(info['pc_items'])} slots):")
+    for item in info['pc_items']:
+        print(f"  {item['item_name']} x{item['quantity']}")
 
 if __name__ == '__main__':
     main()
