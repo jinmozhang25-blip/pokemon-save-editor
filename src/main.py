@@ -135,123 +135,153 @@ def get_badges(badge_byte):
     ]
     return [name for i, name in enumerate(badge_names) if (badge_byte >> i) & 1]
 
-def parse_save(filename):
-    with open(filename, 'rb') as f:
-        data = f.read()
+class SaveFile:
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self.data = None
+        self.bank1 = None
+        self.load()
+        self.parse()
 
-    # Bank 1
-    bank1 = data[0x2000:0x4000]
+    def load(self):
+        with open(self.filepath, 'rb') as f:
+            self.data = f.read()
+        # Bank 1 starts at 0x2000
+        self.bank1 = self.data[0x2000:0x4000]
 
-    # Player name
-    player_name = decode_text(bank1[0x2598 - 0x2000 : 0x25A3 - 0x2000])
+    def parse(self):
+        base = 0x2000
 
-    # Rival name
-    rival_name = decode_text(bank1[0x25F6 - 0x2000 : 0x2601 - 0x2000])
+        # Player name
+        self.player_name = decode_text(self.bank1[0x2598 - base : 0x25A3 - base])
 
-    # Money
-    money_bytes = bank1[0x25F3 - 0x2000 : 0x25F6 - 0x2000]
-    money = bcd_to_int(money_bytes)
+        # Rival name
+        self.rival_name = decode_text(self.bank1[0x25F6 - base : 0x2601 - base])
 
-    # Badges
-    badge_byte = bank1[0x2602 - 0x2000]
-    badges = get_badges(badge_byte)
+        # Money
+        money_bytes = self.bank1[0x25F3 - base : 0x25F6 - base]
+        self.money = bcd_to_int(money_bytes)
 
-    # Party
-    party_count = bank1[0x2F2C - 0x2000]
-    party_species = list(bank1[0x2F2D - 0x2000 : 0x2F33 - 0x2000])
-    party_start = 0x2F34 - 0x2000  # first Pokémon 44‑byte struct
+        # Badges
+        badge_byte = self.bank1[0x2602 - base]
+        self.badges = get_badges(badge_byte)
 
-    party_pokemon = []
-    for i in range(party_count):
-        offset = party_start + i * 44
-        species_id = bank1[offset]   # species
-        level = bank1[offset + 0x21]   # level
-        species_name = SPECIES_NAMES.get(species_id, f"Unknown ({species_id})")
-        party_pokemon.append({
-            'species_id': species_id,
-            'species_name': species_name,
-            'level': level
-        })
+        # Party Pokémon
+        party_count = self.bank1[0x2F2C - base]
+        party_start = 0x2F34 - base
+        self.party = []
+        for i in range(party_count):
+            offset = party_start + i * 44
+            species_id = self.bank1[offset]
+            level = self.bank1[offset + 0x21]
+            species_name = SPECIES_NAMES.get(species_id, f"Unknown ({species_id})")
+            self.party.append({
+                'species_id': species_id,
+                'species_name': species_name,
+                'level': level
+            })
 
-    # Bag items
-    bag_start = 0x25C0 - 0x2000
-    bag_items = []
-    for i in range(20):
-        offset = bag_start + i * 2
-        item_id = bank1[offset]
-        quantity = bank1[offset + 1]
-        if item_id == 0 or quantity == 0 or (item_id == 0xFF and quantity == 0xFF):
-            continue
-        item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
-        bag_items.append({
-            'item_id': item_id,
-            'item_name': item_name,
-            'quantity': quantity
-        })
+        # Bag items
+        bag_start = 0x25C0 - base
+        self.bag_items = []
+        for i in range(20):
+            offset = bag_start + i * 2
+            item_id = self.bank1[offset]
+            quantity = self.bank1[offset + 1]
+            if item_id == 0 or quantity == 0 or (item_id == 0xFF and quantity == 0xFF):
+                continue
+            item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
+            self.bag_items.append({
+                'item_id': item_id,
+                'item_name': item_name,
+                'quantity': quantity
+            })
 
-    #PC items
-    pc_start = 0x27E6 - 0x2000
-    pc_items = []
-    for i in range(50):
-        offset = pc_start + i * 2
-        quantity = bank1[offset]
-        item_id = bank1[offset + 1]
-        if item_id == 0 or quantity == 0:
-            continue
-        if item_id == 0xFF or quantity == 0xFF:
-            continue
-        item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
-        pc_items.append({
-            'item_id': item_id,
-            'item_name': item_name,
-            'quantity': quantity
-        })
+        pc_start = 0x27E6 - base
+        self.pc_items = []
+        for i in range(50):
+            offset = pc_start + i * 2
+            quantity = self.bank1[offset]
+            item_id = self.bank1[offset + 1]
+            if item_id == 0 or quantity == 0 or (item_id == 0xFF and quantity == 0xFF):
+                continue
+            item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
+            self.pc_items.append({
+                'item_id': item_id,
+                'item_name': item_name,
+                'quantity': quantity
+            })
 
-    return {
-        'player_name': player_name,
-        'rival_name': rival_name,
-        'money': money,
-        'badges': badges,
-        'party_count': party_count,
-        'party': party_pokemon,
-        'bag_items': bag_items,
-        'pc_items': pc_items
-    }
+    def show_player(self):
+        print(f"Player: {self.player_name}")
+
+    def show_rival(self):
+        print(f"Rival: {self.rival_name}")
+
+    def show_money(self):
+        print(f"Money: {self.money} ₽")
+
+    def show_badges(self):
+        if self.badges:
+            print(f"Badges: {', '.join(self.badges)}")
+        else:
+            print("Badges: None")
+
+    def show_party(self):
+        print(f"Party ({len(self.party)} Pokémon):")
+        for i, p in enumerate(self.party):
+            print(f"  {i+1}. {p['species_name']} (Level {p['level']})")
+
+    def show_bag(self):
+        print(f"Bag items ({len(self.bag_items)} slots):")
+        for item in self.bag_items:
+            print(f"  {item['item_name']} x{item['quantity']}")
+
+    def show_pc(self):
+        print(f"PC items ({len(self.pc_items)} slots):")
+        for item in self.pc_items:
+            print(f"  {item['item_name']} x{item['quantity']}")
 
 def main():
-    import sys
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-    else:
-        file_path = SAVE_FILE_PATH
+    save = SaveFile(SAVE_FILE_PATH)
 
-    if not file_path:
-        print("Error: No save file specified. Either edit SAVE_FILE_PATH or pass the file as an argument.")
-        print("Usage: python parse_save.py <savefile.sav>")
-        sys.exit(1)
+    while True:
+        print("\n" + "="*40)
+        print("CONSULT SAVE FILE")
+        print("="*40)
+        print("1. Player")
+        print("2. Rival")
+        print("3. Money")
+        print("4. Badges")
+        print("5. Party Pokémon")
+        print("6. Bag items")
+        print("7. PC items")
+        print("8. Exit")
+        print("-"*40)
 
-    try:
-        info = parse_save(file_path)
-    except FileNotFoundError:
-        print(f"Error: File not found: {file_path}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error reading save file: {e}")
-        sys.exit(1)
+        choice = input("Enter your choice (1-8): ").strip()
 
-    print(f"Player: {info['player_name']}")
-    print(f"Rival:  {info['rival_name']}")
-    print(f"Money:  {info['money']} ₽")
-    print(f"Badges: {', '.join(info['badges']) if info['badges'] else 'None'}")
-    print(f"Party ({info['party_count']} Pokémon):")
-    for i, p in enumerate(info['party']):
-        print(f"  {i+1}. {p['species_name']} (Level {p['level']})")
-    print(f"Bag items ({len(info['bag_items'])} slots):")
-    for item in info['bag_items']:
-        print(f"  {item['item_name']} x{item['quantity']}")
-    print(f"PC items ({len(info['pc_items'])} slots):")
-    for item in info['pc_items']:
-        print(f"  {item['item_name']} x{item['quantity']}")
+        if choice == '1':
+            save.show_player()
+        elif choice == '2':
+            save.show_rival()
+        elif choice == '3':
+            save.show_money()
+        elif choice == '4':
+            save.show_badges()
+        elif choice == '5':
+            save.show_party()
+        elif choice == '6':
+            save.show_bag()
+        elif choice == '7':
+            save.show_pc()
+        elif choice == '8':
+            print("Goodbye!")
+            break
+        else:
+            print("Invalid choice. Please enter a number from 1 to 8.")
+
+        input("\nPress Enter to continue...")
 
 if __name__ == '__main__':
     main()
