@@ -1,9 +1,27 @@
-import struct
+import argparse
+import sys
 
 # ============================================================
-# USER CONFIGURATION – Change this to your save file location
+# USER CONFIGURATION – default save file location
 SAVE_FILE_PATH = r"examples/sample.sav"
 # ============================================================
+
+SRAM_SIZE = 0x8000
+BANK_SIZE = 0x2000
+
+# Absolute offsets in a standard 32 KiB Gen I SRAM dump (bank 1 = 0x2000–0x3FFF)
+OFFSETS = {
+    "PLAYER_NAME": 0x2598,
+    "MONEY": 0x25F3,
+    "RIVAL_NAME": 0x25F6,
+    "BADGES": 0x2602,
+    "BAG_ITEMS": 0x25CA,
+    "PC_ITEMS": 0x27E7,
+    "PARTY": 0x2F2C,
+    "CHECKSUM_START": 0x2598,
+    "CHECKSUM_END": 0x3523,
+    "MAIN_CHECKSUM": 0x3523,
+}
 
 # ---------- Gen I English Character Mapping (partial) ----------
 CHAR_MAP = {
@@ -120,6 +138,128 @@ def decode_text(data):
         result.append(CHAR_MAP.get(b, '?'))
     return ''.join(result)
 
+def is_valid_gen1_text(data):
+    """Return True if bytes look like a Gen I text field (0x50-terminated)."""
+    if not data:
+        return False
+    valid = set(CHAR_MAP.keys()) - {0x50}
+    saw_terminator = False
+    for b in data:
+        if b == 0x50:
+            saw_terminator = True
+            break
+        if b not in valid:
+            return False
+    return saw_terminator
+
+
+def calc_main_checksum(data):
+    """Gen I main-data checksum: bitwise NOT of the 8-bit sum."""
+    total = sum(data[OFFSETS["CHECKSUM_START"]:OFFSETS["CHECKSUM_END"]]) & 0xFF
+    return (~total) & 0xFF
+
+
+def score_save_layout(data):
+    """Heuristic score for whether data is a valid Gen I international save."""
+    if len(data) < OFFSETS["MAIN_CHECKSUM"] + 1:
+        return 0
+
+    score = 0
+    name_bytes = data[OFFSETS["PLAYER_NAME"]:OFFSETS["PLAYER_NAME"] + 11]
+    if is_valid_gen1_text(name_bytes):
+        name = decode_text(name_bytes)
+        if 1 <= len(name) <= 10:
+            score += 10
+
+    if data[OFFSETS["MAIN_CHECKSUM"]] == calc_main_checksum(data):
+        score += 20
+
+    party_count = data[OFFSETS["PARTY"]]
+    if 0 <= party_count <= 6:
+        score += 5
+        party_start = OFFSETS["PARTY"] + 8
+        for i in range(party_count):
+            mon_offset = party_start + i * 44
+            if mon_offset + 0x22 > len(data):
+                break
+            species_id = data[mon_offset]
+            level = data[mon_offset + 0x21]
+            if species_id == 0 or level == 0 or level > 100:
+                break
+        else:
+            score += 5
+
+    return score
+
+
+def normalize_save(raw_data):
+    """
+    Normalize emulator save files to a standard 32 KiB SRAM layout.
+
+    Handles:
+    - Standard 32 KiB dumps (BGB, SameBoy, RetroArch, etc.)
+    - Larger files with mGBA/RTC footers (uses first 32 KiB)
+    - 64 KiB padded dumps (picks the valid half)
+    - 8 KiB bank-1-only dumps (prepends empty bank 0)
+    """
+    if not raw_data:
+        raise ValueError("Save file is empty.")
+
+    candidates = []
+
+    if len(raw_data) >= SRAM_SIZE:
+        candidates.append(raw_data[:SRAM_SIZE])
+        if len(raw_data) >= 2 * SRAM_SIZE:
+            candidates.append(raw_data[SRAM_SIZE:2 * SRAM_SIZE])
+
+    if len(raw_data) == BANK_SIZE:
+        padded = b"\x00" * BANK_SIZE + raw_data + b"\x00" * (SRAM_SIZE - 2 * BANK_SIZE)
+        candidates.append(padded)
+
+    if len(raw_data) < SRAM_SIZE and len(raw_data) != BANK_SIZE:
+        candidates.append(raw_data.ljust(SRAM_SIZE, b"\x00"))
+
+    if not candidates:
+        raise ValueError(f"Unsupported save file size: {len(raw_data)} bytes.")
+
+    best = max(candidates, key=score_save_layout)
+    if score_save_layout(best) == 0:
+        # Fall back to the most common layout so partially corrupt saves still load.
+        if len(raw_data) >= SRAM_SIZE:
+            best = raw_data[:SRAM_SIZE]
+        elif len(raw_data) == BANK_SIZE:
+            best = b"\x00" * BANK_SIZE + raw_data + b"\x00" * (SRAM_SIZE - 2 * BANK_SIZE)
+        else:
+            best = raw_data.ljust(SRAM_SIZE, b"\x00")
+
+    return best
+
+
+def parse_item_list(data, start, capacity):
+    """Parse a Gen I item list of [id, qty] pairs terminated by 0xFF."""
+    items = []
+    for i in range(capacity):
+        offset = start + i * 2
+        item_id = data[offset]
+        quantity = data[offset + 1]
+        if item_id == 0xFF or item_id == 0 or quantity == 0:
+            break
+        item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
+        items.append({
+            "item_id": item_id,
+            "item_name": item_name,
+            "quantity": quantity,
+        })
+    return items
+
+    """Decode Gen I text bytes until terminator 0x50."""
+    result = []
+    for b in data:
+        if b == 0x50:
+            break
+        result.append(CHAR_MAP.get(b, '?'))
+    return ''.join(result)
+
 def bcd_to_int(bcd_bytes):
     """Convert 3‑byte BCD (big‑endian) to integer."""
     value = 0
@@ -138,42 +278,44 @@ def get_badges(badge_byte):
 class SaveFile:
     def __init__(self, filepath):
         self.filepath = filepath
+        self.raw_size = 0
         self.data = None
-        self.bank1 = None
         self.load()
         self.parse()
 
     def load(self):
         with open(self.filepath, 'rb') as f:
-            self.data = f.read()
-        # Bank 1 starts at 0x2000
-        self.bank1 = self.data[0x2000:0x4000]
+            raw = f.read()
+        self.raw_size = len(raw)
+        self.data = normalize_save(raw)
 
     def parse(self):
-        base = 0x2000
-
         # Player name
-        self.player_name = decode_text(self.bank1[0x2598 - base : 0x25A3 - base])
+        self.player_name = decode_text(
+            self.data[OFFSETS["PLAYER_NAME"]:OFFSETS["PLAYER_NAME"] + 11]
+        )
 
         # Rival name
-        self.rival_name = decode_text(self.bank1[0x25F6 - base : 0x2601 - base])
+        self.rival_name = decode_text(
+            self.data[OFFSETS["RIVAL_NAME"]:OFFSETS["RIVAL_NAME"] + 11]
+        )
 
         # Money
-        money_bytes = self.bank1[0x25F3 - base : 0x25F6 - base]
+        money_bytes = self.data[OFFSETS["MONEY"]:OFFSETS["MONEY"] + 3]
         self.money = bcd_to_int(money_bytes)
 
-        # Badges
-        badge_byte = self.bank1[0x2602 - base]
+        # Badges (bit 0 = Boulder, bit 7 = Earth per pokered)
+        badge_byte = self.data[OFFSETS["BADGES"]]
         self.badges = get_badges(badge_byte)
 
         # Party Pokémon
-        party_count = self.bank1[0x2F2C - base]
-        party_start = 0x2F34 - base
+        party_count = self.data[OFFSETS["PARTY"]]
+        party_start = OFFSETS["PARTY"] + 8
         self.party = []
         for i in range(party_count):
             offset = party_start + i * 44
-            species_id = self.bank1[offset]
-            level = self.bank1[offset + 0x21]
+            species_id = self.data[offset]
+            level = self.data[offset + 0x21]
             species_name = SPECIES_NAMES.get(species_id, f"Unknown ({species_id})")
             self.party.append({
                 'species_id': species_id,
@@ -182,35 +324,10 @@ class SaveFile:
             })
 
         # Bag items
-        bag_start = 0x25C0 - base
-        self.bag_items = []
-        for i in range(20):
-            offset = bag_start + i * 2
-            item_id = self.bank1[offset]
-            quantity = self.bank1[offset + 1]
-            if item_id == 0 or quantity == 0 or (item_id == 0xFF and quantity == 0xFF):
-                continue
-            item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
-            self.bag_items.append({
-                'item_id': item_id,
-                'item_name': item_name,
-                'quantity': quantity
-            })
+        self.bag_items = parse_item_list(self.data, OFFSETS["BAG_ITEMS"], 20)
 
-        pc_start = 0x27E6 - base
-        self.pc_items = []
-        for i in range(50):
-            offset = pc_start + i * 2
-            quantity = self.bank1[offset]
-            item_id = self.bank1[offset + 1]
-            if item_id == 0 or quantity == 0 or (item_id == 0xFF and quantity == 0xFF):
-                continue
-            item_name = ITEM_NAMES.get(item_id, f"Unknown ({item_id})")
-            self.pc_items.append({
-                'item_id': item_id,
-                'item_name': item_name,
-                'quantity': quantity
-            })
+        # PC items
+        self.pc_items = parse_item_list(self.data, OFFSETS["PC_ITEMS"], 50)
 
     def show_player(self):
         print(f"Player: {self.player_name}")
@@ -243,7 +360,28 @@ class SaveFile:
             print(f"  {item['item_name']} x{item['quantity']}")
 
 def main():
-    save = SaveFile(SAVE_FILE_PATH)
+    parser = argparse.ArgumentParser(
+        description="Consult a Pokémon Generation I (Red/Blue) save file."
+    )
+    parser.add_argument(
+        "save_file",
+        nargs="?",
+        default=SAVE_FILE_PATH,
+        help="Path to a .sav file (default: examples/sample.sav)",
+    )
+    args = parser.parse_args()
+
+    try:
+        save = SaveFile(args.save_file)
+    except (OSError, ValueError) as exc:
+        print(f"Error loading save file: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if save.raw_size != SRAM_SIZE:
+        print(
+            f"Loaded {args.save_file} ({save.raw_size} bytes) "
+            f"— normalized to standard 32 KiB layout."
+        )
 
     while True:
         print("\n" + "="*40)
