@@ -1,10 +1,9 @@
 import argparse
 import sys
 
-# ============================================================
+
 # USER CONFIGURATION – default save file location
 SAVE_FILE_PATH = r"examples/sample.sav"
-# ============================================================
 
 SRAM_SIZE = 0x8000
 BANK_SIZE = 0x2000
@@ -23,7 +22,7 @@ OFFSETS = {
     "MAIN_CHECKSUM": 0x3523,
 }
 
-# ---------- Gen I English Character Mapping (partial) ----------
+#Gen I English Character Mapping (partial)
 CHAR_MAP = {
     0x50: '',        # terminator
     0x7F: ' ',
@@ -44,7 +43,7 @@ CHAR_MAP = {
     0xFE: '8', 0xFF: '9',
 }
 
-# ---------- Species ID to Name (Gen I) ----------
+#Species ID to Name (Gen I)
 SPECIES_NAMES = {
     0x01: "Rhydon", 0x02: "Kangaskhan", 0x03: "Nidoran♂", 0x04: "Clefairy",
     0x05: "Spearow", 0x06: "Voltorb", 0x07: "Nidoking", 0x08: "Slowbro",
@@ -96,7 +95,7 @@ SPECIES_NAMES = {
     0xBD: "Weepinbell", 0xBE: "Victreebel",
 }
 
-# ---------- Item ID to Name (Gen I) ----------
+#Item ID to Name (Gen I)
 ITEM_NAMES = {
     0x01: "Master Ball", 0x02: "Ultra Ball", 0x03: "Great Ball", 0x04: "Poké Ball",
     0x05: "Town Map", 0x06: "Bicycle", 0x07: "S.S. Ticket", 0x08: "Escape Rope",
